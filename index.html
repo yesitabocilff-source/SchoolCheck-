@@ -8,6 +8,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <!-- Tambahkan Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -26,9 +28,16 @@
             border-radius: 0.75rem;
             padding: 0.75rem 1.5rem;
             transition: background-color 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
         .btn-primary:hover {
             background-color: #DB2777; /* Pink-600 */
+        }
+        .btn-primary:disabled {
+            background-color: #fbcfe8;
+            cursor: not-allowed;
         }
         .btn-secondary {
             background-color: #fce7f3;
@@ -98,6 +107,19 @@
         .status-izin { background-color: #FEF3C7; color: #92400E; }
         .status-sakit { background-color: #DBEAFE; color: #1E40AF; }
         .status-alfa { background-color: #FEE2E2; color: #991B1B; }
+        .spinner {
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            display: inline-block;
+            animation: spin .75s linear infinite;
+            margin-right: 0.5rem;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
@@ -124,7 +146,7 @@
                             <input type="text" id="username" placeholder="Username" class="input-field">
                             <input type="password" id="password" placeholder="Password" class="input-field">
                         </div>
-                        <button onclick="handleLogin()" class="btn-primary w-full mt-8">Masuk</button>
+                        <button onclick="handleLogin()" id="login-button" class="btn-primary w-full mt-8">Masuk</button>
                         <p id="login-error" class="text-red-500 mt-4 h-4"></p>
                     </div>
 
@@ -136,7 +158,7 @@
                             <input type="password" id="register-password" placeholder="Password Baru" class="input-field">
                             <input type="text" id="register-token" placeholder="Token Kelas" class="input-field">
                         </div>
-                        <button onclick="handleRegister()" class="btn-primary w-full mt-8">Daftar</button>
+                        <button onclick="handleRegister()" id="register-button" class="btn-primary w-full mt-8">Daftar</button>
                         <p id="register-error" class="text-red-500 mt-4 h-4"></p>
                     </div>
 
@@ -186,7 +208,7 @@
                 </div>
             </aside>
             <div class="w-3/4">
-                <div id="admin-view-content"></div>
+                <div id="admin-view-content" class="text-center p-10"><i class="fas fa-spinner fa-spin fa-3x text-pink-400"></i></div>
             </div>
         </div>
     </template>
@@ -371,7 +393,7 @@
                 </div>
             </aside>
             <div class="w-3/4">
-                <div id="guru-view-content"></div>
+                <div id="guru-view-content" class="text-center p-10"><i class="fas fa-spinner fa-spin fa-3x text-pink-400"></i></div>
             </div>
         </div>
     </template>
@@ -381,7 +403,7 @@
         <div class="card">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="font-bold text-xl text-gray-700">Absensi Kelas - <span class="font-normal" id="absensi-tanggal"></span></h3>
-                <button class="btn-primary text-sm"><i class="fas fa-save mr-2"></i> Simpan Absensi</button>
+                <button onclick="handleSaveAttendance()" id="save-attendance-button" class="btn-primary text-sm"><i class="fas fa-save mr-2"></i> Simpan Absensi</button>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left">
@@ -427,7 +449,7 @@
                 </div>
             </aside>
             <div class="w-3/4">
-                <div id="siswa-view-content"></div>
+                <div id="siswa-view-content" class="text-center p-10"><i class="fas fa-spinner fa-spin fa-3x text-pink-400"></i></div>
             </div>
         </div>
     </template>
@@ -481,44 +503,22 @@
 
     <script>
     // Logo Data URI
-    const logoUrl = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIbGNtcwIQAABtbnRyUkdCIFhZWiAH4gADABQACQAOAB1hY3NwTVNGVAAAAABzYXdzY3RybAAAAAAAAAAAAAAAAAAAAAAA9tYAAQAAAADTLWhhbmSdkQA9QICwPUB0LIGepS0o444sXwu75cnihUAAAAAAABhjcHJ0AAAB+AAAADh3dHB0AAACDAAAABRyWFlaAAACGwAAABRiWFlaAAACLAAAABRnWFlaAAACQAAAABRyVFJDAAACVAAACAxhVFJDAAACVAAACAxiVFJDAAACVAAACAxjaGFkAAAC4AAAACxicHJ0AAADAAAAABRtbHVjAAAAAAAAAAEAAAAMZW5VUwAAABQAAAAcAEQAaQBnAGkAdABhAGwAIABJAG0AYQBnAGkAbgBnAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAEcASQBNAFAAAAAAbWx1YwAAAAAAAAABAAAADGVuVVMAAAAWAAAAHABQAHUAYgBsAGkAYwAgAEQAbwBtAGEAaQBuAABYWVogAAAAAAAA81EAAQAAAAEWzFhZWiAAAAAAAAAAAAAAAAAAAAAAY3VydgAAAAAAAAABAjMAAGN1cnYAAAAAAAAAAQIzAABjdXJ2AAAAAAAAAAECMwAAWFlaIAAAAAAAAJwYAABAAAAA/8hYAFhZWiAAAAAAAABwMwAAnQAAADDAWFlaIAAAAAAAAPhZAABPLgAAb6dhY3NwAAAAAAAAAERJR0lUQUwgSU1BR0lORwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/bAEMABQMEBAQDBQQEBAUFBQYHDAgHBwcHDwsLCQwRDxISEQ8RERMWHBcTFBoVEREYIRgaHR0fHx8TFyIkIh4kHB4fHv/bAEMBBQUFBwYHDggIDh4UERQeHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHv/CABEIAcABwAMBIgACEQEDEQH/xAAbAAEBAAMBAQEAAAAAAAAAAAAAAQIDBAUGB//EABQBAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhADEAAAAeUgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAAIAAAACAAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAAgAAAAIAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/8QAFBEBAAAAAAAAAAAAAAAAAAAAsP/aAAgBAgEBPgBf/8QAFBEBAAAAAAAAAAAAAAAAAAAAsP/aAAgBAwEBPgBf/8QAFBEBAAAAAAAAAAAAAAAAAAAAsP/aAAgBAQABPwBf/8QAFBEBAAAAAAAAAAAAAAAAAAAAsP/aAAgBAgIGPwBf/8QAFBEBAAAAAAAAAAAAAAAAAAAAsP/aAAgBAwIGPwBf/8QAFBEBAAAAAAAAAAAAAAAAAAAAsP/aAAgBAQABPxBf/9oADAMBAAIAAwAAABDzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
-    // ===== DATABASE SEMENTARA (MOCK DATA) =====
-    const db = {
-        users: {
-            admin: { id: 1, username: "admin", password: "123", name: "Admin Sekolah" },
-            guru: [
-                { id: 101, username: "budi.guru", password: "123", name: "Budi Santoso", classIds: [1, 2] },
-                { id: 102, username: "citra.guru", password: "123", name: "Citra Lestari", classIds: [3] }
-            ],
-            siswa: [
-                { id: 1001, username: "ani.siswa", password: "123", name: "Ani Suryani", classId: 1 },
-                { id: 1002, username: "doni.siswa", password: "123", name: "Doni Wijaya", classId: 1 },
-                { id: 1003, username: "eko.siswa", password: "123", name: "Eko Prasetyo", classId: 2 },
-            ]
-        },
-        classes: [
-            { id: 1, name: "Kelas 10-A", token: "X7B2N9", teacherId: 101, studentIds: [1001, 1002] },
-            { id: 2, name: "Kelas 10-B", token: "P5H8K1", teacherId: 101, studentIds: [1003] },
-            { id: 3, name: "Kelas 11-A", token: "A9G4F2", teacherId: 102, studentIds: [] }
-        ],
-        assignments: [
-            { id: 1, classId: 1, title: "Laporan Praktikum Biologi", description: "Buat laporan dari praktikum minggu lalu.", deadline: "2025-10-15T23:59" },
-            { id: 2, classId: 1, title: "Tugas Esai Sejarah", description: "Tulis esai 500 kata tentang Perang Diponegoro.", deadline: "2025-10-20T23:59" }
-        ],
-        submissions: [
-             { assignmentId: 1, studentId: 1001, submittedAt: "2025-10-14T10:00", grade: 90, feedback: "Kerja bagus, laporannya lengkap!", status: "Dinilai" },
-             { assignmentId: 1, studentId: 1002, submittedAt: null, grade: null, feedback: null, status: "Belum Mengumpulkan" }
-        ],
-        attendance: [
-            { studentId: 1001, date: '2025-10-15', status: 'Hadir' },
-            { studentId: 1002, date: '2025-10-15', status: 'Sakit' },
-        ]
-    };
+    const logoUrl = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIbGNtcwIQAABtbnRyUkdCIFhZWiAH4gADABQACQAOAB1hY3NwTVNGVAAAAABzYXdzY3RybAAAAAAAAAAAAAAAAAAAAAAA9tYAAQAAAADTLWhhbmSdkQA9QICwPUB0LIGepS0o444sXwu75cnihUAAAAAAABhjcHJ0AAAB+AAAADh3dHB0AAACDAAAABRyWFlaAAACGwAAABRiWFlaAAACLAAAABRnWFlaAAACQAAAABRyVFJDAAACVAAACAxhVFJDAAACVAAACAxiVFJDAAACVAAACAxjaGFkAAAC4AAAACxicHJ0AAADAAAAABRtbHVjAAAAAAAAAAEAAAAMZW5VUwAAABQAAAAcAEQAaQBnAGkAdABhAGwAIABJAG0AYQBnAGkAbgBnAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAEcASQBNAFAAAAAAbWx1YwAAAAAAAAABAAAADGVuVVMAAAAWAAAAHABQAHUAYgBsAGkAYwAgAEQAbwBtAGEAaQBuAABYWVogAAAAAAAA81EAAQAAAAEWzFhZWiAAAAAAAAAAAAAAAAAAAAAAY3VydgAAAAAAAAABAjMAAGN1cnYAAAAAAAAAAQIzAABjdXJ2AAAAAAAAAAECMwAAWFlaIAAAAAAAAJwYAABAAAAA/8hYAFhZWiAAAAAAAABwMwAAnQAAADDAWFlaIAAAAAAAAPhZAABPLgAAb6dhY3NwAAAAAAAAAERJR0lUQUwgSU1BR0lORwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/bAEMABQMEBAQDBQQEBAUFBQYHDAgHBwcHDwsLCQwRDxISEQ8RERMWHBcTFBoVEREYIRgaHR0fHx8TFyIkIh4kHB4fHv/AEMBBQUFBwYHDggIDh4UERQeHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHv/CABEIAcABwAMBIgACEQEDEQH/xAAbAAEBAAMBAQEAAAAAAAAAAAAAAQIDBAUGB//EABQBAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhADEAAAAeUgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAAIAAAACAAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAAgAAAAIAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQAAASAAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAAAAAACAAAAAgAAAAAIAAAACAAAAAAgAAAAIAAAAAACAAAAAgAAAAAIAAAACAAAAAAkAAAEgAAAAAAJAAABIAAAAAACQAAASAAAAAAAkAAAEgAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/8QAFBEBAAAAAAAAAAAAAAAAAAAAsP/aAAgBAgEBPgBf/8QAFBEBAAAAAAAAAAAAAAAAAAAAsP/aAAgBAwEBPgBf/8QAFBEBAAAAAAAAAAAAAAAAAAAAsP/aAAgBAQABPwBf/8QAFBEBAAAAAAAAAAAAAAAAAAAAsP/aAAgBAgIGPwBf/8QAFBEBAAAAAAAAAAAAAAAAAAAAsP/aAAgBAwIGPwBf/8QAFBEBAAAAAAAAAAAAAAAAAAAAsP/aAAgBAQABPxBf/9oADAMBAAIAAwAAABDzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
+
+    // --- KONEKSI SUPABASE ---
+    // GANTI DENGAN URL DAN KEY SUPABASE ANDA
+    const SUPABASE_URL = 'https://ngcmhilprxndoetdxbzz.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nY21oaWxwcnhuZG9ldGR4Ynp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwODIyMzIsImV4cCI6MjA3NjY1ODIzMn0.yZzEMF8xICJhF29CtKZ0G7-I6OxiHK485Cda9CsKkEU';
+
+    // Inisialisasi Klien Supabase
+    const { createClient } = supabase;
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
     // State Aplikasi
     let currentUser = null;
     let currentRole = null;
     let activeChart = null; 
+    let studentCache = {}; // Cache untuk menyimpan data siswa per kelas
 
     // ===== INISIALISASI APLIKASI =====
     document.addEventListener('DOMContentLoaded', () => {
@@ -552,8 +552,26 @@
         }
     }
     
-    // ===== LOGIKA LOGIN, REGISTER & LOGOUT =====
-    function handleLogin() {
+    // ===== UTILITAS LOADING STATE =====
+    function setLoading(buttonId, isLoading) {
+        const button = document.getElementById(buttonId);
+        if(!button) return;
+        if (isLoading) {
+            button.disabled = true;
+            button.innerHTML = `<span class="spinner"></span><span>Memproses...</span>`;
+        } else {
+            button.disabled = false;
+            // Kembalikan teks tombol berdasarkan ID
+            if (buttonId === 'login-button') button.innerHTML = 'Masuk';
+            else if (buttonId === 'register-button') button.innerHTML = 'Daftar';
+            else if (buttonId === 'save-attendance-button') button.innerHTML = '<i class="fas fa-save mr-2"></i> Simpan Absensi';
+            else if (buttonId === 'modal-save-btn') button.innerHTML = 'Simpan';
+            else button.innerHTML = button.textContent; // default
+        }
+    }
+
+    // ===== LOGIKA LOGIN, REGISTER & LOGOUT (TERHUBUNG SUPABASE) =====
+    async function handleLogin() {
         const role = document.getElementById('role-selector').value;
         const username = document.getElementById('username').value.trim();
         const password = document.getElementById('password').value.trim();
@@ -565,15 +583,19 @@
             return;
         }
 
-        let userFound = null;
-        if (role === 'admin') {
-            if (db.users.admin.username === username && db.users.admin.password === password) {
-                userFound = db.users.admin;
-            }
-        } else {
-            userFound = db.users[role].find(u => u.username === username && u.password === password);
-        }
+        setLoading('login-button', true);
 
+        // Menggunakan Supabase untuk mencari user
+        const { data: userFound, error } = await supabaseClient
+            .from('users')
+            .select('*')
+            .eq('username', username)
+            .eq('password', password) // PENTING: Di aplikasi nyata, jangan simpan password sbg plain text.
+            .eq('role', role)
+            .single(); // .single() mengharapkan 1 hasil atau error
+
+        setLoading('login-button', false);
+        
         if (userFound) {
             currentUser = userFound;
             currentRole = role;
@@ -583,12 +605,13 @@
             document.getElementById('user-role').textContent = role.charAt(0).toUpperCase() + role.slice(1);
             renderDashboard();
         } else {
-            errorEl.textContent = 'Username atau password salah.';
+            errorEl.textContent = 'Username, password, atau peran salah.';
+            console.error('Login Error:', error);
             document.getElementById('password').value = '';
         }
     }
 
-    function handleRegister() {
+    async function handleRegister() {
         const name = document.getElementById('register-name').value.trim();
         const username = document.getElementById('register-username').value.trim();
         const password = document.getElementById('register-password').value.trim();
@@ -600,45 +623,68 @@
             errorEl.textContent = 'Semua field wajib diisi.';
             return;
         }
+        
+        setLoading('register-button', true);
 
-        const targetClass = db.classes.find(c => c.token === token);
+        // 1. Validasi Token Kelas
+        const { data: targetClass, error: classError } = await supabaseClient
+            .from('classes')
+            .select('id')
+            .eq('token', token)
+            .single();
+
         if (!targetClass) {
             errorEl.textContent = 'Token kelas tidak valid.';
+            setLoading('register-button', false);
             return;
         }
 
-        const usernameExists = db.users.siswa.some(s => s.username === username);
-        if (usernameExists) {
+        // 2. Cek jika username sudah ada
+        const { data: existingUser, error: userError } = await supabaseClient
+            .from('users')
+            .select('id')
+            .eq('username', username)
+            .single();
+            
+        if (existingUser) {
             errorEl.textContent = 'Username sudah digunakan.';
+            setLoading('register-button', false);
             return;
         }
         
-        const newId = Date.now();
-        const newStudent = {
-            id: newId,
-            username: username,
-            password: password,
-            name: name,
-            classId: targetClass.id
-        };
+        // 3. Insert user baru
+        const { error: insertError } = await supabaseClient
+            .from('users')
+            .insert({
+                username: username,
+                password: password,
+                name: name,
+                role: 'siswa',
+                class_id: targetClass.id
+            });
 
-        db.users.siswa.push(newStudent);
-        targetClass.studentIds.push(newId);
-        
-        showModal('Pendaftaran Berhasil!', 'Akun Anda telah dibuat. Silakan masuk.', () => {
-            toggleForms(false);
-            document.getElementById('username').value = username;
-            document.getElementById('password').value = '';
-            document.getElementById('register-name').value = '';
-            document.getElementById('register-username').value = '';
-            document.getElementById('register-password').value = '';
-            document.getElementById('register-token').value = '';
-        });
+        setLoading('register-button', false);
+
+        if (insertError) {
+            errorEl.textContent = 'Gagal mendaftar. Coba lagi.';
+            console.error('Register Error:', insertError);
+        } else {
+            showModal('Pendaftaran Berhasil!', 'Akun Anda telah dibuat. Silakan masuk.', () => {
+                toggleForms(false);
+                document.getElementById('username').value = username;
+                document.getElementById('password').value = '';
+                document.getElementById('register-name').value = '';
+                document.getElementById('register-username').value = '';
+                document.getElementById('register-password').value = '';
+                document.getElementById('register-token').value = '';
+            });
+        }
     }
 
     function handleLogout() {
         currentUser = null;
         currentRole = null;
+        studentCache = {}; // Hapus cache siswa
         document.getElementById('login-screen').classList.remove('hidden');
         document.getElementById('main-dashboard').classList.add('hidden');
         document.getElementById('app-content').innerHTML = '';
@@ -668,13 +714,14 @@
         }
     }
 
-    // ===== LOGIKA & RENDER HALAMAN ADMIN =====
+    // ===== LOGIKA & RENDER HALAMAN ADMIN (TERHUBUNG SUPABASE) =====
     function renderAdminDashboard() {
         const template = document.getElementById('admin-template').content.cloneNode(true);
         document.getElementById('app-content').appendChild(template);
         switchAdminView('dashboard');
     }
 
+    // Fungsi switchAdminView diubah untuk menangani loading
     function switchAdminView(view) {
         document.querySelectorAll('#app-content aside .nav-item').forEach(el => el.classList.remove('active'));
         document.getElementById(`admin-nav-${view}`).classList.add('active');
@@ -682,20 +729,33 @@
         if (activeChart) activeChart.destroy();
         
         const contentArea = document.getElementById('admin-view-content');
-        const template = document.getElementById(`admin-${view}-view`).content.cloneNode(true);
-        contentArea.innerHTML = '';
-        contentArea.appendChild(template);
+        // Tampilkan spinner loading
+        contentArea.innerHTML = `<div class="text-center p-10"><i class="fas fa-spinner fa-spin fa-3x text-pink-400"></i></div>`;
         
-        if (view === 'dashboard') loadAdminDashboardData();
-        if (view === 'guru') loadAdminGuruData();
-        if (view === 'siswa') loadAdminSiswaData();
-        if (view === 'kelas') loadAdminKelasData();
+        // Siapkan template
+        const template = document.getElementById(`admin-${view}-view`).content.cloneNode(true);
+        
+        // Panggil fungsi async yang akan memuat data DAN me-render template
+        if (view === 'dashboard') loadAdminDashboardData(template, contentArea);
+        if (view === 'guru') loadAdminGuruData(template, contentArea);
+        if (view === 'siswa') loadAdminSiswaData(template, contentArea);
+        if (view === 'kelas') loadAdminKelasData(template, contentArea);
     }
 
-    function loadAdminDashboardData() {
-        document.getElementById('admin-total-guru').textContent = db.users.guru.length;
-        document.getElementById('admin-total-siswa').textContent = db.users.siswa.length;
-        document.getElementById('admin-total-kelas').textContent = db.classes.length;
+    async function loadAdminDashboardData(template, contentArea) {
+        // Ambil data count dari Supabase
+        const { count: guruCount, error: guruErr } = await supabaseClient.from('users').select('*', { count: 'exact', head: true }).eq('role', 'guru');
+        const { count: siswaCount, error: siswaErr } = await supabaseClient.from('users').select('*', { count: 'exact', head: true }).eq('role', 'siswa');
+        const { count: kelasCount, error: kelasErr } = await supabaseClient.from('classes').select('*', { count: 'exact', head: true });
+
+        // Ganti spinner dengan konten template
+        contentArea.innerHTML = '';
+        contentArea.appendChild(template);
+
+        // Isi data ke template
+        document.getElementById('admin-total-guru').textContent = guruErr ? 0 : guruCount;
+        document.getElementById('admin-total-siswa').textContent = siswaErr ? 0 : siswaCount;
+        document.getElementById('admin-total-kelas').textContent = kelasErr ? 0 : kelasCount;
 
         const ctx = document.getElementById('admin-chart').getContext('2d');
         activeChart = new Chart(ctx, {
@@ -704,7 +764,7 @@
                 labels: ['Guru', 'Siswa', 'Kelas'],
                 datasets: [{
                     label: 'Total Entitas dalam Sistem',
-                    data: [db.users.guru.length, db.users.siswa.length, db.classes.length],
+                    data: [guruCount, siswaCount, kelasCount],
                     backgroundColor: ['#EC4899', '#F472B6', '#F9A8D4'],
                 }]
             },
@@ -712,16 +772,31 @@
         });
     }
     
-    function loadAdminGuruData() {
+    async function loadAdminGuruData(template, contentArea) {
+        // Ambil data guru + data kelas yg diampu (join)
+        const { data: teachers, error } = await supabaseClient
+            .from('users')
+            .select(`*, classes(name)`)
+            .eq('role', 'guru');
+
+        contentArea.innerHTML = '';
+        contentArea.appendChild(template);
+
         const list = document.getElementById('admin-guru-list');
         list.innerHTML = '';
-        db.users.guru.forEach(guru => {
-            const classesManaged = db.classes.filter(c => c.teacherId === guru.id).map(c => c.name).join(', ');
+        if (error || teachers.length === 0) {
+            console.error(error);
+            list.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-500">${error ? 'Gagal memuat data.' : 'Belum ada data guru.'}</td></tr>`;
+            return;
+        }
+
+        teachers.forEach(guru => {
+            const classesManaged = guru.classes.map(c => c.name).join(', ') || '-';
             const row = `
                 <tr class="border-b border-pink-100 hover:bg-pink-50">
                     <td class="p-3">${guru.name}</td>
                     <td class="p-3">${guru.username}</td>
-                    <td class="p-3">${classesManaged || '-'}</td>
+                    <td class="p-3">${classesManaged}</td>
                     <td class="p-3 text-pink-600"><i class="fas fa-edit cursor-pointer mr-3"></i><i class="fas fa-trash cursor-pointer"></i></td>
                 </tr>
             `;
@@ -729,11 +804,25 @@
         });
     }
 
-    function loadAdminSiswaData() {
+    async function loadAdminSiswaData(template, contentArea) {
+        const { data: students, error } = await supabaseClient
+            .from('users')
+            .select(`*, classes(name)`)
+            .eq('role', 'siswa');
+        
+        contentArea.innerHTML = '';
+        contentArea.appendChild(template);
+        
         const list = document.getElementById('admin-siswa-list');
         list.innerHTML = '';
-        db.users.siswa.forEach(siswa => {
-            const studentClass = db.classes.find(c => c.id === siswa.classId)?.name || 'Belum ada kelas';
+        if (error || students.length === 0) {
+            console.error(error);
+            list.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-500">${error ? 'Gagal memuat data.' : 'Belum ada data siswa.'}</td></tr>`;
+            return;
+        }
+
+        students.forEach(siswa => {
+            const studentClass = siswa.classes ? siswa.classes.name : 'Belum ada kelas';
             const row = `
                 <tr class="border-b border-pink-100 hover:bg-pink-50">
                     <td class="p-3">${siswa.name}</td>
@@ -746,17 +835,32 @@
         });
     }
 
-    function loadAdminKelasData() {
+    async function loadAdminKelasData(template, contentArea) {
+        // Ambil data kelas, join dgn wali kelas (teacher) & hitung jml siswa (students)
+        const { data: classes, error } = await supabaseClient
+            .from('classes')
+            .select(`*, teacher:users(name), students:users(count)`);
+
+        contentArea.innerHTML = '';
+        contentArea.appendChild(template);
+
         const list = document.getElementById('admin-kelas-list');
         list.innerHTML = '';
-        db.classes.forEach(kelas => {
-            const teacher = db.users.guru.find(g => g.id === kelas.teacherId)?.name || 'Belum ditugaskan';
+        if (error || classes.length === 0) {
+            console.error(error);
+            list.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-500">${error ? 'Gagal memuat data.' : 'Belum ada kelas.'}</td></tr>`;
+            return;
+        }
+
+        classes.forEach(kelas => {
+            const teacherName = kelas.teacher ? kelas.teacher.name : 'Belum ditugaskan';
+            const studentCount = kelas.students[0] ? kelas.students[0].count : 0;
             const row = `
                  <tr class="border-b border-pink-100 hover:bg-pink-50">
                     <td class="p-3 font-semibold">${kelas.name}</td>
                     <td class="p-3 font-mono bg-gray-100 rounded">${kelas.token}</td>
-                    <td class="p-3">${teacher}</td>
-                    <td class="p-3">${kelas.studentIds.length}</td>
+                    <td class="p-3">${teacherName}</td>
+                    <td class="p-3">${studentCount}</td>
                     <td class="p-3 text-pink-600"><i class="fas fa-edit cursor-pointer mr-3"></i><i class="fas fa-trash cursor-pointer"></i></td>
                 </tr>
             `;
@@ -764,13 +868,25 @@
         });
     }
 
-    // ===== LOGIKA & RENDER HALAMAN GURU =====
-    function renderGuruDashboard() {
+    // ===== LOGIKA & RENDER HALAMAN GURU (TERHUBUNG SUPABASE) =====
+    async function renderGuruDashboard() {
         const template = document.getElementById('guru-template').content.cloneNode(true);
         document.getElementById('app-content').appendChild(template);
         
         const classSelector = document.getElementById('guru-class-selector');
-        const managedClasses = db.classes.filter(c => currentUser.classIds.includes(c.id));
+        classSelector.innerHTML = '<option>Memuat kelas...</option>';
+
+        // Ambil kelas yg diajar oleh guru yg sedang login
+        const { data: managedClasses, error } = await supabaseClient
+            .from('classes')
+            .select('*')
+            .eq('teacher_id', currentUser.id); // currentUser.id didapat saat login
+
+        if (error || !managedClasses) {
+             document.getElementById('guru-content-area').innerHTML = '<p class="text-center text-gray-500 card">Gagal memuat data kelas.</p>';
+             return;
+        }
+        
         classSelector.innerHTML = ''; 
         managedClasses.forEach(c => {
             const option = document.createElement('option');
@@ -791,7 +907,7 @@
         contentArea.innerHTML = '';
         const template = document.getElementById('guru-content-template').content.cloneNode(true);
         contentArea.appendChild(template);
-        switchGuruView('absensi');
+        switchGuruView('absensi'); // Default view
     }
 
     function switchGuruView(view) {
@@ -800,57 +916,139 @@
         document.getElementById(`guru-nav-${view}`).classList.add('active');
         
         const contentArea = document.getElementById('guru-view-content');
+        // Tampilkan spinner
+        contentArea.innerHTML = `<div class="text-center p-10"><i class="fas fa-spinner fa-spin fa-3x text-pink-400"></i></div>`;
         const template = document.getElementById(`guru-${view}-view`).content.cloneNode(true);
+
+        // Panggil fungsi async
+        if (view === 'absensi') loadGuruAbsensi(template, contentArea);
+        if (view === 'tugas') loadGuruTugas(template, contentArea);
+        if (view === 'laporan') loadGuruLaporan(template, contentArea);
+    }
+    
+    async function loadGuruAbsensi(template, contentArea) {
+        const classId = parseInt(document.getElementById('guru-class-selector').value);
+        
+        // Cek cache dulu
+        if (!studentCache[classId]) {
+            const { data: students, error } = await supabaseClient
+                .from('users')
+                .select('id, name')
+                .eq('class_id', classId)
+                .order('name', { ascending: true });
+            if (error) {
+                contentArea.innerHTML = `<div class="card"><p class="text-red-500">Gagal memuat daftar siswa.</p></div>`;
+                return;
+            }
+            studentCache[classId] = students; // Simpan ke cache
+        }
+        
+        const students = studentCache[classId];
+        const today = new Date().toISOString().slice(0, 10); // Format YYYY-MM-DD
+
+        // Cek absensi hari ini
+        const { data: todaysAttendance, error: attendanceError } = await supabaseClient
+            .from('attendance')
+            .select('student_id, status')
+            .eq('date', today)
+            .in('student_id', students.map(s => s.id));
+
+        // Buat map untuk cek status
+        const attendanceMap = new Map(todaysAttendance.map(att => [att.student_id, att.status]));
+
         contentArea.innerHTML = '';
         contentArea.appendChild(template);
 
-        if (view === 'absensi') loadGuruAbsensi();
-        if (view === 'tugas') loadGuruTugas();
-        if (view === 'laporan') loadGuruLaporan();
-    }
-    
-    function loadGuruAbsensi() {
-        const classId = parseInt(document.getElementById('guru-class-selector').value);
-        const students = db.users.siswa.filter(s => s.classId === classId);
         const list = document.getElementById('guru-absensi-list');
         list.innerHTML = '';
-
+        
         document.getElementById('absensi-tanggal').textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
         students.forEach(student => {
+            const currentStatus = attendanceMap.get(student.id);
+            const statuses = ['Hadir', 'Izin', 'Sakit', 'Alfa'];
+            // Buat radio button & auto-check status yg sudah ada
+            const radioButtons = statuses.map(status => `
+                <td class="p-3 text-center">
+                    <label class="cursor-pointer">
+                        <input type="radio" name="status-${student.id}" value="${status}" class="form-radio text-pink-600 mr-2" ${currentStatus === status ? 'checked' : ''}> ${status}
+                    </label>
+                </td>
+            `).join('');
+
             const row = `
-                <tr class="border-b border-pink-100">
+                <tr class="border-b border-pink-100" data-student-id="${student.id}">
                     <td class="p-3 font-medium">${student.name}</td>
-                    <td class="p-3 text-center"><label class="cursor-pointer"><input type="radio" name="status-${student.id}" value="hadir" class="form-radio text-pink-600 mr-2" checked> Hadir</label></td>
-                    <td class="p-3 text-center"><label class="cursor-pointer"><input type="radio" name="status-${student.id}" value="izin" class="form-radio text-pink-600 mr-2"> Izin</label></td>
-                    <td class="p-3 text-center"><label class="cursor-pointer"><input type="radio" name="status-${student.id}" value="sakit" class="form-radio text-pink-600 mr-2"> Sakit</label></td>
-                    <td class="p-3 text-center"><label class="cursor-pointer"><input type="radio" name="status-${student.id}" value="alfa" class="form-radio text-pink-600 mr-2"> Alfa</label></td>
+                    ${radioButtons}
                 </tr>
             `;
             list.innerHTML += row;
         });
     }
 
-    function loadGuruTugas() {
+    // Fungsi BARU untuk menyimpan absensi
+    async function handleSaveAttendance() {
+        setLoading('save-attendance-button', true);
+        const attendanceRows = document.querySelectorAll('#guru-absensi-list tr');
+        const today = new Date().toISOString().slice(0, 10);
+        
+        const recordsToUpsert = [];
+        attendanceRows.forEach(row => {
+            const studentId = row.dataset.studentId;
+            const selectedStatus = row.querySelector('input[type="radio"]:checked');
+            if (studentId && selectedStatus) {
+                recordsToUpsert.push({
+                    student_id: parseInt(studentId),
+                    date: today,
+                    status: selectedStatus.value
+                });
+            }
+        });
+
+        if (recordsToUpsert.length > 0) {
+            // upsert = update jika ada, insert jika tidak ada
+            const { error } = await supabaseClient
+                .from('attendance')
+                .upsert(recordsToUpsert, { onConflict: 'student_id, date' });
+
+            if (error) {
+                console.error('Save Attendance Error:', error);
+                showModal('Gagal!', 'Gagal menyimpan data absensi. Silakan coba lagi.', () => {});
+            } else {
+                showModal('Berhasil!', 'Data absensi hari ini telah berhasil disimpan.', () => {});
+            }
+        }
+        setLoading('save-attendance-button', false);
+    }
+
+    async function loadGuruTugas(template, contentArea) {
         const classId = parseInt(document.getElementById('guru-class-selector').value);
-        const assignments = db.assignments.filter(a => a.classId === classId);
+        // Ambil tugas, hitung jumlah submission, dan jumlah siswa di kelas
+        const { data: assignments, error } = await supabaseClient
+            .from('assignments')
+            .select(`*, submissions(count), classes(users(count))`)
+            .eq('class_id', classId);
+
+        contentArea.innerHTML = '';
+        contentArea.appendChild(template);
+
         const list = document.getElementById('guru-tugas-list');
         list.innerHTML = '';
 
-        if(assignments.length === 0) {
-            list.innerHTML = `<p class="text-center text-gray-500 p-4">Belum ada tugas untuk kelas ini.</p>`;
+        if (error || assignments.length === 0) {
+            console.error(error);
+            list.innerHTML = `<p class="text-center text-gray-500 p-4">${error ? 'Gagal memuat tugas.' : 'Belum ada tugas untuk kelas ini.'}</p>`;
             return;
         }
 
         assignments.forEach(assignment => {
-            const submissions = db.submissions.filter(s => s.assignmentId === assignment.id);
-            const collectedCount = submissions.filter(s => s.submittedAt !== null).length;
-            const totalStudents = db.classes.find(c => c.id === classId).studentIds.length;
+            const collectedCount = assignment.submissions[0]?.count || 0;
+            const totalStudents = assignment.classes.users[0]?.count || 0;
             const card = `
                 <div class="border border-pink-200 p-4 rounded-lg">
                     <div class="flex justify-between items-start">
                         <div>
-                            <h4 class="font-bold text-lg text-pink-800">${assignment.title}</h4>
+                            <h4 class="font-bold text-gray-800">${assignment.title}</h4>
                             <p class="text-sm text-gray-600">${assignment.description}</p>
                             <p class="text-xs text-red-600 mt-1">Batas Waktu: ${new Date(assignment.deadline).toLocaleString('id-ID')}</p>
                         </div>
@@ -865,23 +1063,66 @@
         });
     }
 
-    function loadGuruLaporan() {
+    async function loadGuruLaporan(template, contentArea) {
+        const classId = parseInt(document.getElementById('guru-class-selector').value);
+        const today = new Date();
+        // Ambil hari pertama dan terakhir bulan ini
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10);
+        
+        // Pastikan cache siswa ada
+        if (!studentCache[classId]) {
+            // Trik: panggil loadGuruAbsensi hanya untuk mengisi cache
+            await loadGuruAbsensi(document.createElement('div'), document.createElement('div'));
+        }
+        // Jika masih kosong (gagal fetch), keluar
+        if (!studentCache[classId]) {
+             contentArea.innerHTML = `<div class="card text-red-500">Gagal memuat data siswa untuk laporan.</div>`;
+             return;
+        }
+
+        const studentIds = studentCache[classId].map(s => s.id);
+
+        // Ambil data absensi untuk semua siswa di kelas ini, dalam rentang tgl bulan ini
+        const { data, error } = await supabaseClient
+            .from('attendance')
+            .select('status')
+            .in('student_id', studentIds)
+            .gte('date', firstDay)
+            .lte('date', lastDay);
+
+        contentArea.innerHTML = '';
+        contentArea.appendChild(template);
+
+        if (error) {
+            contentArea.innerHTML = `<div class="card text-red-500">Gagal memuat data laporan.</div>`;
+            return;
+        }
+
+        // Hitung statistik
+        const stats = { 'Hadir': 0, 'Izin': 0, 'Sakit': 0, 'Alfa': 0 };
+        data.forEach(item => {
+            if (stats.hasOwnProperty(item.status)) {
+                stats[item.status]++;
+            }
+        });
+        
          const ctx = document.getElementById('guru-chart-absensi').getContext('2d');
          activeChart = new Chart(ctx, {
             type: 'doughnut',
             data: {
-                labels: ['Hadir', 'Sakit', 'Izin', 'Alfa'],
+                labels: Object.keys(stats),
                 datasets: [{
-                    label: 'Status Kehadiran',
-                    data: [15, 2, 1, 0], // Contoh data statis
-                    backgroundColor: ['#10B981', '#3B82F6', '#F59E0B', '#EF4444'],
+                    label: 'Status Kehadiran Bulan Ini',
+                    data: Object.values(stats),
+                    backgroundColor: ['#10B981', '#F59E0B', '#3B82F6', '#EF4444'],
                 }]
             },
             options: { responsive: true, plugins: { legend: { position: 'top' } } }
         });
     }
 
-    // ===== LOGIKA & RENDER HALAMAN SISWA =====
+    // ===== LOGIKA & RENDER HALAMAN SISWA (TERHUBUNG SUPABASE) =====
     function renderSiswaDashboard() {
         const template = document.getElementById('siswa-template').content.cloneNode(true);
         document.getElementById('app-content').appendChild(template);
@@ -894,102 +1135,156 @@
         document.getElementById(`siswa-nav-${view}`).classList.add('active');
         
         const contentArea = document.getElementById('siswa-view-content');
+        contentArea.innerHTML = `<div class="text-center p-10"><i class="fas fa-spinner fa-spin fa-3x text-pink-400"></i></div>`;
         const template = document.getElementById(`siswa-${view}-view`).content.cloneNode(true);
-        contentArea.innerHTML = '';
-        contentArea.appendChild(template);
 
-        if (view === 'dashboard') loadSiswaDashboard();
-        if (view === 'tugas') loadSiswaTugas();
-        if (view === 'riwayat') loadSiswaRiwayat();
+        if (view === 'dashboard') loadSiswaDashboard(template, contentArea);
+        if (view === 'tugas') loadSiswaTugas(template, contentArea);
+        if (view === 'riwayat') loadSiswaRiwayat(template, contentArea);
     }
     
-    function loadSiswaDashboard(){
-        const ctx = document.getElementById('siswa-chart-absensi').getContext('2d');
-         activeChart = new Chart(ctx, {
+    async function loadSiswaDashboard(template, contentArea){
+        // 1. Ambil data absensi bulan ini
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10);
+        
+        const { data: attendanceData, error: attendanceError } = await supabaseClient
+            .from('attendance')
+            .select('status')
+            .eq('student_id', currentUser.id)
+            .gte('date', firstDay)
+            .lte('date', lastDay);
+
+        // 2. Ambil tugas mendatang
+        const { data: assignments, error: assignmentError } = await supabaseClient
+            .from('assignments')
+            .select(`*, submissions!left(status)`)
+            .eq('class_id', currentUser.class_id)
+            .gte('deadline', new Date().toISOString()) // Tenggatnya belum lewat
+            .order('deadline', { ascending: true })
+            .limit(5);
+
+        contentArea.innerHTML = '';
+        contentArea.appendChild(template);
+        
+        // 3. Render Chart Absensi
+        const attendanceStats = { 'Hadir': 0, 'Izin': 0, 'Sakit': 0, 'Alfa': 0 };
+        if (attendanceData) {
+            attendanceData.forEach(item => {
+                if (attendanceStats.hasOwnProperty(item.status)) {
+                    attendanceStats[item.status]++;
+                }
+            });
+        }
+        const chartCtx = document.getElementById('siswa-chart-absensi').getContext('2d');
+        activeChart = new Chart(chartCtx, {
             type: 'pie',
             data: {
-                labels: ['Hadir', 'Sakit', 'Izin', 'Alfa'],
+                labels: Object.keys(attendanceStats),
                 datasets: [{
-                    label: 'Absensi Saya',
-                    data: [18, 1, 0, 0], // Contoh data statis
-                    backgroundColor: ['#10B981', '#3B82F6', '#F59E0B', '#EF4444'],
+                    data: Object.values(attendanceStats),
+                    backgroundColor: ['#10B981', '#F59E0B', '#3B82F6', '#EF4444'],
                 }]
             },
             options: { responsive: true }
         });
 
+        // 4. Render Tugas Mendatang
         const upcomingList = document.getElementById('siswa-upcoming-tugas');
         upcomingList.innerHTML = '';
-        const assignments = db.assignments.filter(a => a.classId === currentUser.classId && new Date(a.deadline) > new Date());
-        if(assignments.length > 0) {
+        if (assignments && assignments.length > 0) {
             assignments.forEach(a => {
-                upcomingList.innerHTML += `<p class="text-sm text-gray-700">${a.title} - <span class="text-red-500">${new Date(a.deadline).toLocaleDateString('id-ID')}</span></p>`;
+                // Cek apakah sudah submit (submissions!left)
+                const isSubmitted = a.submissions && a.submissions.length > 0;
+                const item = `
+                    <div class="flex justify-between items-center text-sm p-2 rounded ${isSubmitted ? 'bg-green-50' : 'bg-gray-50'}">
+                        <div>
+                            <p class="font-semibold">${a.title}</p>
+                            <p class="text-xs text-gray-500">Tenggat: ${new Date(a.deadline).toLocaleDateString('id-ID')}</p>
+                        </div>
+                        <span class="px-2 py-1 rounded-full text-xs font-semibold ${isSubmitted ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-800'}">
+                            ${isSubmitted ? 'Terkumpul' : 'Belum'}
+                        </span>
+                    </div>
+                `;
+                upcomingList.innerHTML += item;
             });
         } else {
-            upcomingList.innerHTML = `<p class="text-gray-500 text-sm">Tidak ada tugas yang akan datang.</p>`;
+            upcomingList.innerHTML = '<p class="text-gray-500 text-sm">Tidak ada tugas yang akan datang.</p>';
         }
     }
     
-    function loadSiswaTugas(){
+    async function loadSiswaTugas(template, contentArea){
+        // Ambil semua tugas untuk kelas siswa ini, dan status submission-nya
+        const { data: assignments, error } = await supabaseClient
+            .from('assignments')
+            .select(`*, submissions!left(status)`)
+            .eq('class_id', currentUser.class_id)
+            .order('deadline', { ascending: false });
+
+        contentArea.innerHTML = '';
+        contentArea.appendChild(template);
+        
         const list = document.getElementById('siswa-tugas-list');
         list.innerHTML = '';
-        const assignments = db.assignments.filter(a => a.classId === currentUser.classId);
-        
-        if (assignments.length === 0) {
-            list.innerHTML = `<p class="text-center text-gray-500 p-4">Hore, tidak ada tugas!</p>`;
+
+        if (error || assignments.length === 0) {
+            list.innerHTML = `<p class="text-center text-gray-500 p-4">${error ? 'Gagal memuat tugas.' : 'Hore, tidak ada tugas!'}</p>`;
             return;
         }
 
-        assignments.forEach(assignment => {
-            const submission = db.submissions.find(s => s.assignmentId === assignment.id && s.studentId === currentUser.id);
-            const isSubmitted = submission && submission.submittedAt;
-            const statusClass = isSubmitted ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
-            const statusText = isSubmitted ? `Terkumpul pada ${new Date(submission.submittedAt).toLocaleDateString('id-ID')}` : 'Belum Dikumpulkan';
+        assignments.forEach(a => {
+             const status = a.submissions[0]?.status || 'Belum Mengumpulkan';
+             let statusClass = 'bg-gray-200 text-gray-800';
+             if (status === 'Dinilai') statusClass = 'bg-blue-200 text-blue-800';
+             if (status === 'Terkumpul') statusClass = 'bg-green-200 text-green-800';
 
             const card = `
-                <div class="border border-pink-200 p-4 rounded-lg">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <h4 class="font-bold text-lg text-pink-800">${assignment.title}</h4>
-                            <p class="text-sm text-gray-600">${assignment.description}</p>
-                            <p class="text-xs text-red-600 mt-1">Batas Waktu: ${new Date(assignment.deadline).toLocaleString('id-ID')}</p>
-                        </div>
-                        <div class="text-right">
-                           <span class="text-xs font-semibold px-2 py-1 rounded-full ${statusClass}">${statusText}</span>
-                        </div>
+                <div class="border border-pink-200 p-4 rounded-lg flex justify-between items-center">
+                    <div>
+                        <h4 class="font-bold text-gray-800">${a.title}</h4>
+                        <p class="text-sm text-gray-600">${a.description || ''}</p>
+                        <p class="text-xs text-red-600 mt-1">Batas Waktu: ${new Date(a.deadline).toLocaleString('id-ID')}</p>
                     </div>
-                     ${!isSubmitted ? `
-                    <div class="mt-4 pt-4 border-t border-pink-100 flex items-center space-x-4">
-                        <input type="file" class="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-50 file:text-pink-700 hover:file:bg-pink-100">
-                        <button class="btn-primary text-sm">Kumpulkan</button>
-                    </div>` : ''}
+                    <div class="text-right flex-shrink-0 ml-4">
+                         <span class-"px-3 py-1 rounded-full text-xs font-semibold ${statusClass}">${status}</span>
+                         <button class="btn-secondary text-xs mt-2 w-full ${status !== 'Belum Mengumpulkan' ? 'hidden':''}">Kumpulkan</button>
+                    </div>
                 </div>
             `;
             list.innerHTML += card;
         });
     }
 
-    function loadSiswaRiwayat() {
+    async function loadSiswaRiwayat(template, contentArea) {
+        // Ambil semua submission milik siswa yg login, dan join ke judul tugasnya
+        const { data: submissions, error } = await supabaseClient
+            .from('submissions')
+            .select(`*, assignment:assignments(title)`)
+            .eq('student_id', currentUser.id)
+            .neq('status', 'Belum Mengumpulkan')
+            .order('submitted_at', { ascending: false });
+
+        contentArea.innerHTML = '';
+        contentArea.appendChild(template);
+        
         const list = document.getElementById('siswa-riwayat-list');
         list.innerHTML = '';
-        const mySubmissions = db.submissions.filter(s => s.studentId === currentUser.id);
-        
-        if(mySubmissions.length === 0) {
-            list.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-500">Tidak ada riwayat tugas.</td></tr>`;
+        if (error || submissions.length === 0) {
+            list.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-500">${error ? 'Gagal memuat riwayat.' : 'Belum ada riwayat tugas.'}</td></tr>`;
             return;
         }
 
-        mySubmissions.forEach(sub => {
-            const assignment = db.assignments.find(a => a.id === sub.assignmentId);
-            const statusBadge = sub.status === "Dinilai" ? "status-hadir" : "status-izin";
-
+        submissions.forEach(s => {
+            const statusBadge = s.status === "Dinilai" ? "status-hadir" : "status-izin";
             const row = `
                  <tr class="border-b border-pink-100 hover:bg-pink-50">
-                    <td class="p-3 font-semibold">${assignment.title}</td>
-                    <td class="p-3">${sub.submittedAt ? new Date(sub.submittedAt).toLocaleDateString('id-ID') : '-'}</td>
-                    <td class="p-3"><span class="px-2 py-1 text-xs font-semibold rounded-full ${statusBadge}">${sub.status}</span></td>
-                    <td class="p-3 font-bold text-lg text-pink-700">${sub.grade || '-'}</td>
-                    <td class="p-3 text-sm text-gray-600 italic">"${sub.feedback || 'Belum ada feedback.'}"</td>
+                    <td class="p-3 font-semibold">${s.assignment.title}</td>
+                    <td class="p-3">${s.submitted_at ? new Date(s.submitted_at).toLocaleDateString('id-ID') : '-'}</td>
+                    <td class="p-3"><span class="px-2 py-1 text-xs font-semibold rounded-full ${statusBadge}">${s.status}</span></td>
+                    <td class="p-3 font-bold text-lg text-pink-700">${s.grade || '-'}</td>
+                    <td class="p-3 text-sm text-gray-600 italic">"${s.feedback || 'Belum ada feedback.'}"</td>
                 </tr>
             `;
             list.innerHTML += row;
@@ -1021,7 +1316,7 @@
         };
     }
     
-    function showFormModal(type) {
+    async function showFormModal(type) {
         const modalContainer = document.getElementById('form-modal-container');
         const modal = document.createElement('div');
         modal.className = 'modal-backdrop';
@@ -1040,14 +1335,26 @@
         modal.querySelector('#form-content').appendChild(formTemplate);
         modalContainer.appendChild(modal);
 
-        // Populate dropdowns if necessary
-        if (type === 'siswa') {
-            const classSelect = modal.querySelector('#form-siswa-kelas');
-            db.classes.forEach(c => classSelect.innerHTML += `<option value="${c.id}">${c.name}</option>`);
-        }
-        if (type === 'kelas') {
-            const teacherSelect = modal.querySelector('#form-kelas-guru');
-            db.users.guru.forEach(g => teacherSelect.innerHTML += `<option value="${g.id}">${g.name}</option>`);
+        // Ambil data untuk dropdowns dari Supabase
+        try {
+            if (type === 'siswa') {
+                const classSelect = modal.querySelector('#form-siswa-kelas');
+                classSelect.innerHTML = '<option>Memuat...</option>';
+                const { data: classes, error } = await supabaseClient.from('classes').select('id, name');
+                if (error) throw error;
+                classSelect.innerHTML = '';
+                classes.forEach(c => classSelect.innerHTML += `<option value="${c.id}">${c.name}</option>`);
+            }
+            if (type === 'kelas') {
+                const teacherSelect = modal.querySelector('#form-kelas-guru');
+                teacherSelect.innerHTML = '<option>Memuat...</option>';
+                const { data: teachers, error } = await supabaseClient.from('users').select('id, name').eq('role', 'guru');
+                if (error) throw error;
+                teacherSelect.innerHTML = '';
+                teachers.forEach(g => teacherSelect.innerHTML += `<option value="${g.id}">${g.name}</option>`);
+            }
+        } catch (e) {
+             modal.querySelector('#form-error').textContent = 'Gagal memuat data dropdown.';
         }
 
         setTimeout(() => modal.classList.add('visible'), 10);
@@ -1061,58 +1368,67 @@
         modal.querySelector('#modal-save-btn').onclick = () => handleFormSubmit(type, closeModal);
     }
     
-    function handleFormSubmit(type, closeModalCallback) {
+    async function handleFormSubmit(type, closeModalCallback) {
         const errorEl = document.querySelector('#form-error');
         errorEl.textContent = '';
+        setLoading('modal-save-btn', true);
+
         try {
+            let error;
             switch (type) {
                 case 'guru':
                     const guruName = document.getElementById('form-guru-name').value.trim();
                     const guruUsername = document.getElementById('form-guru-username').value.trim();
                     const guruPassword = document.getElementById('form-guru-password').value.trim();
                     if (!guruName || !guruUsername || !guruPassword) throw new Error("Semua field wajib diisi.");
-                    if (db.users.guru.some(g => g.username === guruUsername)) throw new Error("Username guru sudah ada.");
                     
-                    db.users.guru.push({
-                        id: Date.now(), name: guruName, username: guruUsername, password: guruPassword, classIds: []
-                    });
-                    loadAdminGuruData();
+                    ({ error } = await supabaseClient.from('users').insert({
+                        name: guruName, username: guruUsername, password: guruPassword, role: 'guru'
+                    }));
+                    if (error) throw error;
+                    
+                    switchAdminView('guru'); // Refresh data
                     break;
+                    
                 case 'siswa':
                     const siswaName = document.getElementById('form-siswa-name').value.trim();
                     const siswaUsername = document.getElementById('form-siswa-username').value.trim();
                     const siswaPassword = document.getElementById('form-siswa-password').value.trim();
                     const classId = parseInt(document.getElementById('form-siswa-kelas').value);
                     if (!siswaName || !siswaUsername || !siswaPassword) throw new Error("Semua field wajib diisi.");
-                    if (db.users.siswa.some(s => s.username === siswaUsername)) throw new Error("Username siswa sudah ada.");
-                    
-                    const newSiswaId = Date.now();
-                    db.users.siswa.push({
-                        id: newSiswaId, name: siswaName, username: siswaUsername, password: siswaPassword, classId: classId
-                    });
-                    db.classes.find(c => c.id === classId).studentIds.push(newSiswaId);
-                    loadAdminSiswaData();
+
+                    ({ error } = await supabaseClient.from('users').insert({
+                        name: siswaName, username: siswaUsername, password: siswaPassword, role: 'siswa', class_id: classId
+                    }));
+                    if (error) throw error;
+
+                    switchAdminView('siswa'); // Refresh data
                     break;
+                    
                 case 'kelas':
                     const kelasName = document.getElementById('form-kelas-name').value.trim();
                     const teacherId = parseInt(document.getElementById('form-kelas-guru').value);
                     if (!kelasName) throw new Error("Nama kelas wajib diisi.");
 
-                    const newClassId = Date.now();
                     const token = Math.random().toString(36).substring(2, 8).toUpperCase();
-                    db.classes.push({
-                        id: newClassId, name: kelasName, token: token, teacherId: teacherId, studentIds: []
-                    });
-                    db.users.guru.find(g => g.id === teacherId).classIds.push(newClassId);
-                    loadAdminKelasData();
+                    ({ error } = await supabaseClient.from('classes').insert({
+                        name: kelasName, token: token, teacher_id: teacherId
+                    }));
+                    if (error) throw error;
+                    
+                    switchAdminView('kelas'); // Refresh data
                     break;
             }
             closeModalCallback();
         } catch (e) {
-            errorEl.textContent = e.message;
+            console.error('Form Submit Error:', e);
+            errorEl.textContent = e.message.includes('unique constraint') ? 'Username atau Token sudah ada.' : e.message;
+        } finally {
+            setLoading('modal-save-btn', false);
         }
     }
 
     </script>
 </body>
 </html>
+
